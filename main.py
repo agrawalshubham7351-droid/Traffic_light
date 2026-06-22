@@ -79,6 +79,8 @@ def run():
     print(f"Symbol     : {config.SYMBOL}")
     print(f"Timeframe  : {config.TIMEFRAME}")
     print(f"Capital : {get_balance()}", flush=True)
+    print("AFTER CAPITAL")
+    print("ENTERING LOOP")
     print(f"Risk/Trade : {config.RISK_PER_TRADE}%")
     print(f"Reward     : {config.REWARD_RATIO}x")
     print("=" * 40)
