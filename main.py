@@ -284,6 +284,8 @@ def _reset_trade(pnl=0):
 # ENTRY POINT
 # =========================
 
+
+
 app = Flask(__name__)
 
 @app.route("/")
@@ -293,8 +295,13 @@ def home():
 def start_bot():
     run()
 
+# --- Bot thread global level par start karo (Gunicorn ke liye) ---
+print("[Startup] Starting bot thread...")
+bot_thread = threading.Thread(target=start_bot, daemon=True)
+bot_thread.start()
+print("[Startup] Bot thread started.")
+
 if __name__ == "__main__":
-    threading.Thread(target=start_bot).start()
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 10000))
