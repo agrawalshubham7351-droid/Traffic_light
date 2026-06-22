@@ -12,6 +12,7 @@ import broker
 from flask import Flask
 import threading
 import os
+from broker import get_balance
 
 
 # =========================
@@ -77,7 +78,7 @@ def run():
     print("=== Traffic Light Pairs Bot Started ===")
     print(f"Symbol     : {config.SYMBOL}")
     print(f"Timeframe  : {config.TIMEFRAME}")
-    print(f"Capital    : {config.CAPITAL}")
+    print(f"Capital : {get_balance()}")
     print(f"Risk/Trade : {config.RISK_PER_TRADE}%")
     print(f"Reward     : {config.REWARD_RATIO}x")
     print("=" * 40)
