@@ -1,0 +1,109 @@
+# =========================
+# STRATEGY.PY
+# =========================
+
+import requests
+import pandas as pd
+import time
+import config
+
+
+# =========================
+# FETCH DATA
+# =========================
+
+def get_candles():
+
+    end_time = int(time.time())
+
+    start_time = end_time - (200 * 5 * 60)
+
+    r = requests.get(
+        "https://api.india.delta.exchange/v2/history/candles",
+        params={
+            "resolution": config.TIMEFRAME,
+            "symbol": config.SYMBOL,
+            "start": start_time,
+            "end": end_time
+        }
+    )
+
+    data = r.json()
+
+    df = pd.DataFrame(
+        data["result"]
+    )
+
+    return df
+
+
+# =========================
+# HELPER FUNCTIONS
+# =========================
+
+def is_green(candle):
+    return candle["close"] > candle["open"]
+
+
+def is_red(candle):
+    return candle["close"] < candle["open"]
+
+
+def is_pair(current_candle, previous_candle):
+
+    if is_green(current_candle) and is_red(previous_candle):
+        return True
+
+    if is_red(current_candle) and is_green(previous_candle):
+        return True
+
+    return False
+
+
+def get_pair_range(candle1, candle2):
+
+    range_high = max(
+        candle1["high"],
+        candle2["high"]
+    )
+
+    range_low = min(
+        candle1["low"],
+        candle2["low"]
+    )
+
+    return range_high, range_low
+
+
+# =========================
+# SIGNAL GENERATION
+# =========================
+
+def get_signal(df, current_price):
+
+    if len(df) < 2:
+        return "NO SIGNAL", None, None
+
+    candle_1 = df.iloc[-2]
+    candle_2 = df.iloc[-3]
+
+    pair_bana = is_pair(
+        candle_1,
+        candle_2
+    )
+
+    if not pair_bana:
+        return "NO SIGNAL", None, None
+
+    range_high, range_low = get_pair_range(
+        candle_1,
+        candle_2
+    )
+
+    if current_price >= range_high:
+        return "BUY", range_high, range_low
+
+    if current_price <= range_low:
+        return "SELL", range_high, range_low
+
+    return "NO SIGNAL", range_high, range_low
