@@ -78,7 +78,12 @@ def run():
     print("=== Traffic Light Pairs Bot Started ===")
     print(f"Symbol     : {config.SYMBOL}")
     print(f"Timeframe  : {config.TIMEFRAME}")
-    print(f"Capital : {get_balance()}", flush=True)
+    capital = get_balance()
+
+    print(f"Capital : {capital}")
+    
+    print("AFTER BALANCE")
+    print(f"Risk/Trade : {config.RISK_PER_TRADE}%")
     print("AFTER CAPITAL")
     print("ENTERING LOOP")
     print(f"Risk/Trade : {config.RISK_PER_TRADE}%")
