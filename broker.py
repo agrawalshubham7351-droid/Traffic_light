@@ -73,6 +73,8 @@ def get_position():
         config.PRODUCT_ID
     )
 
+    print("POSITION RESPONSE =", position)
+
     return position
 
 
