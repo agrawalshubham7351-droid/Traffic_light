@@ -23,6 +23,21 @@ def get_current_price():
         ticker["mark_price"]
     )
 
+# =========================
+# BALANCE
+# =========================
+
+def get_balance():
+
+    wallet = delta_client.get_wallet()
+
+    balance = float(
+        wallet["balance"]
+    )
+
+    return balance
+
+
 
 # =========================
 # POSITION
