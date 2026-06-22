@@ -110,6 +110,7 @@ def run():
 
 
     while True:
+        print("LOOP RUNNING...")
 
         try:
 
