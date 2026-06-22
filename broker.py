@@ -33,11 +33,14 @@ def get_current_price():
 #     for asset in balances:
 #         if asset["asset_symbol"] == "USDT":
 #             return float(asset["available_balance"])
-#     return 0.0
+# #     return 0.0
+# def get_balance():
+#     balance = delta_client.get_balances(config.USDT_ASSET_ID)
+#     return float(balance["available_balance"])
 def get_balance():
     balance = delta_client.get_balances(config.USDT_ASSET_ID)
+    print(f"[DEBUG] balance response: {balance}")   # <-- ye line add kar
     return float(balance["available_balance"])
-
 
 
 # =========================
