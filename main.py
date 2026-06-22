@@ -87,6 +87,7 @@ def run():
 
     # --- Startup: Check for existing open position ---
     print("[Startup] Checking for existing position...")
+    print("STARTUP BLOCK ENTERED")
     try:
         position = broker.get_position()
         size = position["size"]
