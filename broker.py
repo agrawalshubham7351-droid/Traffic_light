@@ -23,6 +23,12 @@ def get_current_price():
         ticker["mark_price"]
     )
 
+
+
+
+
+
+
 # =========================
 # BALANCE (DEBUG VERSION)
 # =========================
