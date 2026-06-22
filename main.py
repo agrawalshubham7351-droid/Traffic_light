@@ -11,8 +11,7 @@ import risk
 import broker
 from flask import Flask
 import threading
-import os
-from broker import get_balance
+from broker import get_balance   # duplicate import hata diya (os already imported)
 
 
 # =========================
@@ -78,10 +77,16 @@ def run():
     print("=== Traffic Light Pairs Bot Started ===")
     print(f"Symbol     : {config.SYMBOL}")
     print(f"Timeframe  : {config.TIMEFRAME}")
-    capital = get_balance()
 
-    print(f"Capital : {capital}")
-    
+    # ---------- BALANCE FETCH WITH ERROR HANDLING ----------
+    try:
+        capital = get_balance()
+        print(f"Capital : {capital}")
+    except Exception as e:
+        print(f"[ERROR] Could not fetch balance: {e}")
+        capital = 0.0
+    # --------------------------------------------------------
+
     print("AFTER BALANCE")
     print(f"Risk/Trade : {config.RISK_PER_TRADE}%")
     print("AFTER CAPITAL")
