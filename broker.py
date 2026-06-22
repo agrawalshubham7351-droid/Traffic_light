@@ -41,14 +41,47 @@ def get_current_price():
 #     balance = delta_client.get_balances(config.USDT_ASSET_ID)
 #     print(f"[DEBUG] balance response: {balance}")   # <-- ye line add kar
 #     return float(balance["available_balance"])
+# def get_balance():
+#     try:
+#         balance = delta_client.get_balances(config.USDT_ASSET_ID)
+#         print(f"[DEBUG] balance response: {balance}", flush=True)
+#         return float(balance["available_balance"])
+#     except Exception as e:
+#         print(f"[DEBUG] get_balance ERROR: {type(e).__name__}: {e}", flush=True)
+#         return 0.0
+
 def get_balance():
-    try:
-        balance = delta_client.get_balances(config.USDT_ASSET_ID)
-        print(f"[DEBUG] balance response: {balance}", flush=True)
-        return float(balance["available_balance"])
-    except Exception as e:
-        print(f"[DEBUG] get_balance ERROR: {type(e).__name__}: {e}", flush=True)
-        return 0.0
+    import requests
+    import time
+    import hashlib
+    import hmac
+
+    method = "GET"
+    path = "/v2/wallet/balances"
+    timestamp = str(int(time.time()))
+    signature_data = method + timestamp + path
+    signature = hmac.new(
+        config.DELTA_API_SECRET.encode(),
+        signature_data.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    headers = {
+        "api-key": config.DELTA_API_KEY,
+        "timestamp": timestamp,
+        "signature": signature,
+        "User-Agent": "python-requests"
+    }
+
+    response = requests.get(
+        "https://cdn-ind.testnet.deltaex.org" + path,
+        headers=headers
+    )
+
+    print(f"[DEBUG] Status Code: {response.status_code}", flush=True)
+    print(f"[DEBUG] Response Body: {response.text}", flush=True)
+
+    return 0.0
 
 # =========================
 # POSITION
