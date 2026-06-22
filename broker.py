@@ -27,13 +27,16 @@ def get_current_price():
 # BALANCE
 # =========================
 
-# BAAD (sahi)
+# # BAAD (sahi)
+# def get_balance():
+#     balances = delta_client.get_balances()
+#     for asset in balances:
+#         if asset["asset_symbol"] == "USDT":
+#             return float(asset["available_balance"])
+#     return 0.0
 def get_balance():
-    balances = delta_client.get_balances()
-    for asset in balances:
-        if asset["asset_symbol"] == "USDT":
-            return float(asset["available_balance"])
-    return 0.0
+    balance = delta_client.get_balances(config.USDT_ASSET_ID)
+    return float(balance["available_balance"])
 
 
 
