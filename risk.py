@@ -3,6 +3,7 @@
 # =========================
 
 import config
+from broker import get_balance
 
 
 # =========================
@@ -11,11 +12,16 @@ import config
 
 def calculate_risk_amount():
 
+    capital = get_balance()
+
     risk_amount = (
-        config.CAPITAL
+        capital
         * config.RISK_PER_TRADE
         / 100
     )
+
+    print(f"Live Balance: {capital}")
+    print(f"Risk Amount: {risk_amount}")
 
     return risk_amount
 
