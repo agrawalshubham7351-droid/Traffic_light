@@ -55,11 +55,13 @@ def get_balance():
         headers=headers
     )
 
-    print(f"[DEBUG] Status Code: {response.status_code}", flush=True)
-    print(f"[DEBUG] Response Body: {response.text}", flush=True)
+    data = response.json()
+
+    for asset in data["result"]:
+        if asset["asset_symbol"] == "USD":
+            return float(asset["available_balance"])
 
     return 0.0
-
 
 # =========================
 # POSITION
