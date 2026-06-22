@@ -24,31 +24,8 @@ def get_current_price():
     )
 
 # =========================
-# BALANCE
+# BALANCE (DEBUG VERSION)
 # =========================
-
-# # BAAD (sahi)
-# def get_balance():
-#     balances = delta_client.get_balances()
-#     for asset in balances:
-#         if asset["asset_symbol"] == "USDT":
-#             return float(asset["available_balance"])
-# #     return 0.0
-# def get_balance():
-#     balance = delta_client.get_balances(config.USDT_ASSET_ID)
-#     return float(balance["available_balance"])
-# def get_balance():
-#     balance = delta_client.get_balances(config.USDT_ASSET_ID)
-#     print(f"[DEBUG] balance response: {balance}")   # <-- ye line add kar
-#     return float(balance["available_balance"])
-# def get_balance():
-#     try:
-#         balance = delta_client.get_balances(config.USDT_ASSET_ID)
-#         print(f"[DEBUG] balance response: {balance}", flush=True)
-#         return float(balance["available_balance"])
-#     except Exception as e:
-#         print(f"[DEBUG] get_balance ERROR: {type(e).__name__}: {e}", flush=True)
-#         return 0.0
 
 def get_balance():
     import requests
@@ -82,6 +59,7 @@ def get_balance():
     print(f"[DEBUG] Response Body: {response.text}", flush=True)
 
     return 0.0
+
 
 # =========================
 # POSITION
@@ -144,7 +122,6 @@ def close_position():
 
         return
 
-    # Long Position Close
     if size > 0:
 
         order = delta_client.place_order(
@@ -156,7 +133,6 @@ def close_position():
 
         return order
 
-    # Short Position Close
     if size < 0:
 
         order = delta_client.place_order(
