@@ -9,6 +9,9 @@ import config
 import strategy
 import risk
 import broker
+from flask import Flask
+import threading
+import os
 
 
 # =========================
@@ -266,5 +269,18 @@ def _reset_trade(pnl=0):
 # ENTRY POINT
 # =========================
 
-if __name__ == "__main__":
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Traffic Light Bot Running"
+
+def start_bot():
     run()
+
+if __name__ == "__main__":
+    threading.Thread(target=start_bot).start()
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
