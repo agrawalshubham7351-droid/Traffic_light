@@ -28,7 +28,7 @@ RISK_PER_TRADE = 2
 SYMBOL = "BTCUSD"
 
 # USDT Asset ID (for balance fetch)
-USDT_ASSET_ID = 4          # <-- YE NAYI LINE ADD KARNI HAI
+USDT_ASSET_ID = 3         # <-- YE NAYI LINE ADD KARNI HAI
 
 # Timeframe
 TIMEFRAME = "5m"
