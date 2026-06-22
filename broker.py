@@ -50,32 +50,24 @@ def get_balance():
         "User-Agent": "python-requests"
     }
 
-    response = requests.get(
-        "https://cdn-ind.testnet.deltaex.org" + path,
-        headers=headers
-    )
+    try:
+        response = requests.get(
+            "https://cdn-ind.testnet.deltaex.org" + path,
+            headers=headers,
+            timeout=10          # ⬅️ 10 seconds timeout
+        )
+        response.raise_for_status()   # agar 4xx/5xx aaye toh exception
+        data = response.json()
 
-    data = response.json()
+        for asset in data["result"]:
+            if asset["asset_symbol"] == "USD":
+                return float(asset["available_balance"])
 
-    for asset in data["result"]:
-        if asset["asset_symbol"] == "USD":
-            return float(asset["available_balance"])
+    except Exception as e:
+        print(f"[ERROR] get_balance() failed: {e}")
+        return 0.0
 
     return 0.0
-
-# =========================
-# POSITION
-# =========================
-
-def get_position():
-
-    position = delta_client.get_position(
-        config.PRODUCT_ID
-    )
-
-    print("POSITION RESPONSE =", position)
-
-    return position
 
 
 # =========================
