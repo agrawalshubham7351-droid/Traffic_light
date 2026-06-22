@@ -37,11 +37,18 @@ def get_current_price():
 # def get_balance():
 #     balance = delta_client.get_balances(config.USDT_ASSET_ID)
 #     return float(balance["available_balance"])
+# def get_balance():
+#     balance = delta_client.get_balances(config.USDT_ASSET_ID)
+#     print(f"[DEBUG] balance response: {balance}")   # <-- ye line add kar
+#     return float(balance["available_balance"])
 def get_balance():
-    balance = delta_client.get_balances(config.USDT_ASSET_ID)
-    print(f"[DEBUG] balance response: {balance}")   # <-- ye line add kar
-    return float(balance["available_balance"])
-
+    try:
+        balance = delta_client.get_balances(config.USDT_ASSET_ID)
+        print(f"[DEBUG] balance response: {balance}", flush=True)
+        return float(balance["available_balance"])
+    except Exception as e:
+        print(f"[DEBUG] get_balance ERROR: {type(e).__name__}: {e}", flush=True)
+        return 0.0
 
 # =========================
 # POSITION
