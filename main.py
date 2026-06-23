@@ -11,7 +11,6 @@ import risk
 import broker
 from flask import Flask
 import threading
-from broker import get_balance   # duplicate import hata diya (os already imported)
 
 
 # =========================
@@ -77,27 +76,12 @@ def run():
     print("=== Traffic Light Pairs Bot Started ===")
     print(f"Symbol     : {config.SYMBOL}")
     print(f"Timeframe  : {config.TIMEFRAME}")
-
-    # ---------- BALANCE FETCH WITH ERROR HANDLING ----------
-    try:
-        capital = get_balance()
-        print(f"Capital : {capital}")
-    except Exception as e:
-        print(f"[ERROR] Could not fetch balance: {e}")
-        capital = 0.0
-    # --------------------------------------------------------
-
-    print("AFTER BALANCE")
-    print(f"Risk/Trade : {config.RISK_PER_TRADE}%")
-    print("AFTER CAPITAL")
-    print("ENTERING LOOP")
     print(f"Risk/Trade : {config.RISK_PER_TRADE}%")
     print(f"Reward     : {config.REWARD_RATIO}x")
     print("=" * 40)
 
     # --- Startup: Check for existing open position ---
     print("[Startup] Checking for existing position...")
-    print("STARTUP BLOCK ENTERED")
     try:
         position = broker.get_position()
         size = position["size"]
@@ -123,7 +107,6 @@ def run():
 
 
     while True:
-        print("LOOP RUNNING...")
 
         try:
 
@@ -284,8 +267,6 @@ def _reset_trade(pnl=0):
 # ENTRY POINT
 # =========================
 
-
-
 app = Flask(__name__)
 
 @app.route("/")
@@ -295,7 +276,7 @@ def home():
 def start_bot():
     run()
 
-# --- Bot thread global level par start karo (Gunicorn ke liye) ---
+# Bot thread global level par start karo (Gunicorn ke liye)
 print("[Startup] Starting bot thread...")
 bot_thread = threading.Thread(target=start_bot, daemon=True)
 bot_thread.start()
