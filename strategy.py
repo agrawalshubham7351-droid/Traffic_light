@@ -18,7 +18,9 @@ def get_candles():
 
     # ✅ SIRF 3 CANDLES FETCH KARO (Current + 2 Previous)
     candles_to_fetch = 3
-    start_time = end_time - (candles_to_fetch * int(config.TIMEFRAME))
+    # '5m' se sirf '5' nikaalo (last letter 'm' hatao)
+    timeframe_in_minutes = int(config.TIMEFRAME[:-1])  
+    start_time = end_time - (candles_to_fetch * timeframe_in_minutes * 60)
 
     r = requests.get(
         "https://api.india.delta.exchange/v2/history/candles",
