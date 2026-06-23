@@ -35,7 +35,7 @@ def get_candles():
     df = df.sort_values("time").reset_index(drop=True)
     
     return df
-    =============
+    #=============
 # HELPER FUNCTIONS
 # =========================
 
