@@ -102,7 +102,7 @@ def get_signal(df, current_price):
 
     # --- Pair age check — 2 candles (10 min) se zyada purana ho toh ignore ---
     current_time  = int(time.time())
-    candle_1_time = int(candle_1["time"])
+    candle_1_time = int(candle_1["time"]) // 1000
     pair_age_min  = (current_time - candle_1_time) // 60
 
     if current_time - candle_1_time > 600:
