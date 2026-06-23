@@ -30,13 +30,18 @@ def get_candles():
 
     data = r.json()
 
-    df = pd.DataFrame(
-        data["result"]
-    )
+    df = pd.DataFrame(data["result"])
+
+    print("===== LAST 5 CANDLES =====")
+    print(df[["time","open","high","low","close"]].tail(5))
+
+    print("===== -2 =====")
+    print(df.iloc[-2])
+
+    print("===== -3 =====")
+    print(df.iloc[-3])
 
     return df
-
-
 # =========================
 # HELPER FUNCTIONS
 # =========================
