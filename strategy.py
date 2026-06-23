@@ -79,7 +79,7 @@ def get_pair_range(candle1, candle2):
 
 def get_signal(df, current_price):
 
-    if len(df) < 2:
+    if len(df) < 3:
         return "NO SIGNAL", None, None
 
     candle_1 = df.iloc[-2]
@@ -105,9 +105,9 @@ def get_signal(df, current_price):
     
     pair_age_min = (current_time - candle_1_time) // 60
 
-    if pair_age_min > 10:
+    if pair_age_min > 15:
         print(f"[Skip] Pair {pair_age_min} min purana — fresh pair ka wait karo")
-        return "NO SIGNAL", range_high, range_low
+        return "NO SIGNAL", None ,None
 
     if current_price >= range_high:
         return "BUY", range_high, range_low
@@ -115,4 +115,4 @@ def get_signal(df, current_price):
     if current_price <= range_low:
         return "SELL", range_high, range_low
 
-    return "NO SIGNAL", range_high, range_low
+    return "NO SIGNAL", None, None
