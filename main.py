@@ -11,6 +11,8 @@ import risk
 import broker
 from flask import Flask
 import threading
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 
 
 # =========================
