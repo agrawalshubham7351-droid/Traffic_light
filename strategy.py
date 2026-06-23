@@ -16,7 +16,9 @@ def get_candles():
 
     end_time = int(time.time())
 
-    start_time = end_time - (200 * 5 * 60)
+    # ✅ SIRF 3 CANDLES FETCH KARO (Current + 2 Previous)
+    candles_to_fetch = 3
+    start_time = end_time - (candles_to_fetch * int(config.TIMEFRAME))
 
     r = requests.get(
         "https://api.india.delta.exchange/v2/history/candles",
