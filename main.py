@@ -196,7 +196,8 @@ def run():
 
                     if qty > 0:
                         print(f"[BUY] Entry: {entry} | SL: {sl} | Target: {target} | Qty: {qty}")
-                        broker.place_buy_order(int(qty))
+                        broker.place_buy_order(max(1, int(qty)))
+
                         _set_trade("BUY", entry, sl, target, qty)
                     else:
                         print("[BUY] Qty = 0, skipping order")
@@ -212,7 +213,7 @@ def run():
 
                     if qty > 0:
                         print(f"[SELL] Entry: {entry} | SL: {sl} | Target: {target} | Qty: {qty}")
-                        broker.place_sell_order(int(qty))
+                        broker.place_sell_order(max(1,int(qty)))
                         _set_trade("SELL", entry, sl, target, qty)
                     else:
                         print("[SELL] Qty = 0, skipping order")
