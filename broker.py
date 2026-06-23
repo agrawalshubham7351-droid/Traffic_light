@@ -3,9 +3,7 @@
 # =========================
 
 import config
-
 from config import delta_client
-
 from delta_rest_client import OrderType
 
 
@@ -14,23 +12,16 @@ from delta_rest_client import OrderType
 # =========================
 
 def get_current_price():
-
     ticker = delta_client.get_ticker(
         config.SYMBOL
     )
-
     return float(
         ticker["mark_price"]
     )
 
 
-
-
-
-
-
 # =========================
-# BALANCE (DEBUG VERSION)
+# BALANCE
 # =========================
 
 def get_balance():
@@ -39,18 +30,27 @@ def get_balance():
 
 
 # =========================
+# POSITION
+# =========================
+
+def get_position():
+    position = delta_client.get_position(
+        config.PRODUCT_ID
+    )
+    return position
+
+
+# =========================
 # BUY ORDER
 # =========================
 
 def place_buy_order(quantity):
-
     order = delta_client.place_order(
         product_id=config.PRODUCT_ID,
         size=quantity,
         side="buy",
         order_type=OrderType.MARKET
     )
-
     return order
 
 
@@ -59,14 +59,12 @@ def place_buy_order(quantity):
 # =========================
 
 def place_sell_order(quantity):
-
     order = delta_client.place_order(
         product_id=config.PRODUCT_ID,
         size=quantity,
         side="sell",
         order_type=OrderType.MARKET
     )
-
     return order
 
 
@@ -75,35 +73,27 @@ def place_sell_order(quantity):
 # =========================
 
 def close_position():
-
     position = get_position()
-
     size = position["size"]
 
     if size == 0:
-
         print("No Open Position")
-
         return
 
     if size > 0:
-
         order = delta_client.place_order(
             product_id=config.PRODUCT_ID,
             size=abs(size),
             side="sell",
             order_type=OrderType.MARKET
         )
-
         return order
 
     if size < 0:
-
         order = delta_client.place_order(
             product_id=config.PRODUCT_ID,
             size=abs(size),
             side="buy",
             order_type=OrderType.MARKET
         )
-
         return order
