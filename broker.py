@@ -34,46 +34,8 @@ def get_current_price():
 # =========================
 
 def get_balance():
-    import requests
-    import time
-    import hashlib
-    import hmac
-
-    method = "GET"
-    path = "/v2/wallet/balances"
-    timestamp = str(int(time.time()))
-    signature_data = method + timestamp + path
-    signature = hmac.new(
-        config.DELTA_API_SECRET.encode(),
-        signature_data.encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-    headers = {
-        "api-key": config.DELTA_API_KEY,
-        "timestamp": timestamp,
-        "signature": signature,
-        "User-Agent": "python-requests"
-    }
-
-    try:
-        response = requests.get(
-            "https://cdn-ind.testnet.deltaex.org" + path,
-            headers=headers,
-            timeout=10          # ⬅️ 10 seconds timeout
-        )
-        response.raise_for_status()   # agar 4xx/5xx aaye toh exception
-        data = response.json()
-
-        for asset in data["result"]:
-            if asset["asset_symbol"] == "USD":
-                return float(asset["available_balance"])
-
-    except Exception as e:
-        print(f"[ERROR] get_balance() failed: {e}")
-        return 0.0
-
-    return 0.0
+    balance = delta_client.get_balances(3)
+    return float(balance["available_balance"])
 
 
 # =========================
