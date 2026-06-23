@@ -27,22 +27,15 @@ def get_candles():
             "end": end_time
         }
     )
-
     data = r.json()
 
     df = pd.DataFrame(data["result"])
-
-    print("===== LAST 5 CANDLES =====")
-    print(df[["time","open","high","low","close"]].tail(5))
-
-    print("===== -2 =====")
-    print(df.iloc[-2])
-
-    print("===== -3 =====")
-    print(df.iloc[-3])
-
+    
+    # Oldest → Newest
+    df = df.sort_values("time").reset_index(drop=True)
+    
     return df
-# =========================
+    =============
 # HELPER FUNCTIONS
 # =========================
 
@@ -106,11 +99,13 @@ def get_signal(df, current_price):
     )
 
     # --- Pair age check — 2 candles (10 min) se zyada purana ho toh ignore ---
-    current_time  = int(time.time())
-    candle_1_time = int(candle_1["time"]) // 1000
-    pair_age_min  = (current_time - candle_1_time) // 60
+    # --- Pair age check ---
+    current_time = int(time.time())
+    candle_1_time = int(candle_1["time"])
+    
+    pair_age_min = (current_time - candle_1_time) // 60
 
-    if current_time - candle_1_time > 600:
+    if pair_age_min > 10:
         print(f"[Skip] Pair {pair_age_min} min purana — fresh pair ka wait karo")
         return "NO SIGNAL", range_high, range_low
 
