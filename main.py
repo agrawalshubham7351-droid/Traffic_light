@@ -297,11 +297,12 @@ def run():
                     qty        = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
-                        qty_int = max(1, int(qty))
+                        qty_btc = max(0.001, round(qty, 4))
+                        
 
                         if range_high <= current_price:
                             print(f"[BUY] Trigger already breached. Placing MARKET order.")
-                            broker.place_buy_order(qty_int)
+                            broker.place_buy_order(qty_btc)
 
                             time.sleep(2)
                             real_entry = _get_real_entry_price()
@@ -354,11 +355,11 @@ def run():
                     qty        = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
-                        qty_int = max(1, int(qty))
+                        qty_btc = max(0.001, round(qty, 4))
 
                         if range_low >= current_price:
                             print(f"[SELL] Trigger already breached. Placing MARKET order.")
-                            broker.place_sell_order(qty_int)
+                            broker.place_sell_order(qty_btc)
 
                             time.sleep(2)
                             real_entry = _get_real_entry_price()
