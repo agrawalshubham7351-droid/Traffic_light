@@ -103,25 +103,20 @@ def close_position():
 # STOP-LIMIT ORDER (ENTRY - SLIPPAGE CONTROL)
 # =========================
 
-# =========================
-# STOP-LIMIT ORDER (ENTRY - SLIPPAGE CONTROL)
-# =========================
-
 def place_stop_limit_order(side, stop_price, limit_price, quantity):
     """
     Entry ke liye Stop-Limit order.
     """
     side = side.lower()
     
-    # ✅ FIX: 'stop_price' ki jagah 'trigger_price' use karo
-    order = delta_client.place_order(
+    # ✅ FIX: place_stop_order use karo, trigger_price nahi, stop_price do
+    order = delta_client.place_stop_order(
         product_id=config.PRODUCT_ID,
         size=quantity,
         side=side,
-        order_type="stop_limit",
-        trigger_price=stop_price,      # <--- CHANGE YAHAN
+        stop_price=stop_price,
         limit_price=limit_price,
-        reduce_only=False
+        order_type=OrderType.LIMIT   # Stop-Limit order ke liye LIMIT type
     )
     print(f"[Order] Stop-Limit {side.upper()} placed | Trigger: {stop_price} | Limit: {limit_price}")
     return order
@@ -137,14 +132,13 @@ def place_stop_market_order(side, stop_price, quantity):
     """
     side = side.lower()
     
-    # ✅ FIX: 'stop_price' ki jagah 'trigger_price' use karo
-    order = delta_client.place_order(
+    # ✅ FIX: place_stop_order use karo
+    order = delta_client.place_stop_order(
         product_id=config.PRODUCT_ID,
         size=quantity,
         side=side,
-        order_type="stop_market",
-        trigger_price=stop_price,      # <--- CHANGE YAHAN
-        reduce_only=True
+        stop_price=stop_price,
+        order_type=OrderType.MARKET   # Stop-Market order ke liye MARKET type
     )
     print(f"[Order] Stop-Market {side.upper()} placed | Trigger: {stop_price}")
     return order
