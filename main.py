@@ -22,7 +22,7 @@ sys.stdout.reconfigure(line_buffering=True)
 LOOP_INTERVAL = 30          # seconds
 PRODUCT_ID    = 84          # BTC Futures (Testnet)
 STATE_FILE    = "trade_state.json"
-SLIPPAGE_BUFFER = 0.0005    # 0.05% buffer for stop-limit entries
+SLIPPAGE_BUFFER = 0.002     # 0.2% buffer for stop-limit entries (Increased from 0.05%)
 
 # Inject product ID into config
 config.PRODUCT_ID = PRODUCT_ID
@@ -68,6 +68,32 @@ def _delete_state():
     if os.path.exists(STATE_FILE):
         os.remove(STATE_FILE)
         print(f"[State] {STATE_FILE} deleted")
+
+
+# =========================
+# HELPER: GET REAL ENTRY PRICE FROM EXCHANGE
+# =========================
+
+def _get_real_entry_price():
+    """
+    Exchange se position fetch karke real entry price return karta hai.
+    Returns:
+        float: Real entry price (positive for both LONG and SHORT)
+    """
+    try:
+        position = broker.get_position()
+        size = position["size"]
+        entry_price = float(position["entry_price"])
+        
+        # SHORT position mein entry_price negative aata hai, isliye abs use karo
+        if size < 0:
+            entry_price = abs(entry_price)
+            
+        print(f"[Entry] Real entry price from exchange: {entry_price}")
+        return entry_price
+    except Exception as e:
+        print(f"[Entry] Could not fetch real entry price: {e}")
+        return None
 
 
 # =========================
@@ -170,7 +196,6 @@ def run():
                             broker.close_position()
                             _reset_trade(pnl=+abs(config.entry_price - config.target) * config.quantity)
 
-                        # ✅ FIX: SELL mein SL upar hota hai, isliye '>=' use karo
                         elif current_price >= config.stop_loss:
                             print("[EXIT] Stop Loss hit — Placing Stop-Market order")
                             side = "BUY"  # SELL trade close karne ke liye BUY order
@@ -193,18 +218,39 @@ def run():
                 # --- ENTRY: LONG ---
                 if signal == "BUY":
 
-                    entry  = current_price
-                    sl     = range_low
-                    target = entry + (config.REWARD_RATIO * abs(entry - sl))
-                    qty    = risk.calculate_quantity(entry, sl)
+                    # Entry ke liye current price se calculate karo (temporary)
+                    temp_entry = current_price
+                    sl = range_low
+                    target = temp_entry + (config.REWARD_RATIO * abs(temp_entry - sl))
+                    qty = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
-                        # ✅ NEW: Stop-Limit Order (Slippage control ke liye)
                         trigger_price = range_high
-                        limit_price = range_high * (1 + SLIPPAGE_BUFFER)  # 0.05% upar
-                        print(f"[BUY] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {max(1, int(qty))}")
-                        broker.place_stop_limit_order("BUY", trigger_price, limit_price, max(1, int(qty)))
-                        _set_trade("BUY", entry, sl, target, qty)
+                        limit_price = range_high * (1 + SLIPPAGE_BUFFER)
+                        qty_int = max(1, int(qty))
+                        
+                        print(f"[BUY] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
+                        broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_int)
+                        
+                        # ✅ CRITICAL FIX: 2 second ruko, phir real entry price fetch karo
+                        print("[BUY] Waiting 2 seconds for order to fill...")
+                        time.sleep(2)
+                        
+                        real_entry = _get_real_entry_price()
+                        if real_entry is not None:
+                            # Real entry ke hisaab se SL/Target recalculate karo
+                            real_sl = sl
+                            real_target = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
+                            print(f"[BUY] Real Entry: {real_entry} | Recalculated Target: {real_target}")
+                            
+                            # Naya qty real entry ke hisaab se recalculate karo
+                            real_qty = risk.calculate_quantity(real_entry, real_sl)
+                            real_qty_int = max(1, int(real_qty))
+                            
+                            _set_trade("BUY", real_entry, real_sl, real_target, real_qty_int)
+                        else:
+                            print("[BUY] Could not fetch real entry. Using temporary entry.")
+                            _set_trade("BUY", temp_entry, sl, target, qty)
                     else:
                         print("[BUY] Qty = 0, skipping order")
 
@@ -212,18 +258,36 @@ def run():
                 # --- ENTRY: SHORT ---
                 elif signal == "SELL":
 
-                    entry  = current_price
-                    sl     = range_high
-                    target = entry - (config.REWARD_RATIO * abs(sl - entry))
-                    qty    = risk.calculate_quantity(entry, sl)
+                    temp_entry = current_price
+                    sl = range_high
+                    target = temp_entry - (config.REWARD_RATIO * abs(sl - temp_entry))
+                    qty = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
-                        # ✅ NEW: Stop-Limit Order (Slippage control ke liye)
                         trigger_price = range_low
-                        limit_price = range_low * (1 - SLIPPAGE_BUFFER)  # 0.05% neeche
-                        print(f"[SELL] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {max(1, int(qty))}")
-                        broker.place_stop_limit_order("SELL", trigger_price, limit_price, max(1, int(qty)))
-                        _set_trade("SELL", entry, sl, target, qty)
+                        limit_price = range_low * (1 - SLIPPAGE_BUFFER)
+                        qty_int = max(1, int(qty))
+                        
+                        print(f"[SELL] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
+                        broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_int)
+                        
+                        # ✅ CRITICAL FIX: 2 second ruko, phir real entry price fetch karo
+                        print("[SELL] Waiting 2 seconds for order to fill...")
+                        time.sleep(2)
+                        
+                        real_entry = _get_real_entry_price()
+                        if real_entry is not None:
+                            real_sl = sl
+                            real_target = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
+                            print(f"[SELL] Real Entry: {real_entry} | Recalculated Target: {real_target}")
+                            
+                            real_qty = risk.calculate_quantity(real_entry, real_sl)
+                            real_qty_int = max(1, int(real_qty))
+                            
+                            _set_trade("SELL", real_entry, real_sl, real_target, real_qty_int)
+                        else:
+                            print("[SELL] Could not fetch real entry. Using temporary entry.")
+                            _set_trade("SELL", temp_entry, sl, target, qty)
                     else:
                         print("[SELL] Qty = 0, skipping order")
 
