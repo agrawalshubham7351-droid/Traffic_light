@@ -103,33 +103,25 @@ def close_position():
 # STOP-LIMIT ORDER (ENTRY - SLIPPAGE CONTROL)
 # =========================
 
+# =========================
+# STOP-LIMIT ORDER (ENTRY - SLIPPAGE CONTROL)
+# =========================
+
 def place_stop_limit_order(side, stop_price, limit_price, quantity):
     """
     Entry ke liye Stop-Limit order.
-    
-    Parameters:
-    -----------
-    side : str
-        'BUY' ya 'SELL' (Case-insensitive)
-    stop_price : float
-        Trigger price (jis par order active ho)
-    limit_price : float
-        Execution limit (is se bura price nahi milega)
-    quantity : int
-        Order size (contracts)
     """
-    # side ko lowercase mein convert karo (Delta API expects 'buy' or 'sell')
     side = side.lower()
     
-    # ✅ FIX: Direct string "stop_limit" use karo (Enum nahi hai)
+    # ✅ FIX: 'stop_price' ki jagah 'trigger_price' use karo
     order = delta_client.place_order(
         product_id=config.PRODUCT_ID,
         size=quantity,
         side=side,
         order_type="stop_limit",
-        stop_price=stop_price,
+        trigger_price=stop_price,      # <--- CHANGE YAHAN
         limit_price=limit_price,
-        reduce_only=False   # Naya position open kar rahe hain
+        reduce_only=False
     )
     print(f"[Order] Stop-Limit {side.upper()} placed | Trigger: {stop_price} | Limit: {limit_price}")
     return order
@@ -142,28 +134,17 @@ def place_stop_limit_order(side, stop_price, limit_price, quantity):
 def place_stop_market_order(side, stop_price, quantity):
     """
     Stop Loss ke liye Stop-Market order.
-    Guaranteed exit deta hai, thodi slippage ho sakti hai par position band ho jayegi.
-    
-    Parameters:
-    -----------
-    side : str
-        'BUY' (short cover karne ke liye) ya 'SELL' (long close karne ke liye)
-    stop_price : float
-        Trigger price (jis par order active ho)
-    quantity : int
-        Order size (contracts)
     """
-    # side ko lowercase mein convert karo
     side = side.lower()
     
-    # ✅ FIX: Direct string "stop_market" use karo (Enum nahi hai)
+    # ✅ FIX: 'stop_price' ki jagah 'trigger_price' use karo
     order = delta_client.place_order(
         product_id=config.PRODUCT_ID,
         size=quantity,
         side=side,
         order_type="stop_market",
-        stop_price=stop_price,
-        reduce_only=True   # Sirf existing position close karega (safe guard)
+        trigger_price=stop_price,      # <--- CHANGE YAHAN
+        reduce_only=True
     )
     print(f"[Order] Stop-Market {side.upper()} placed | Trigger: {stop_price}")
     return order
