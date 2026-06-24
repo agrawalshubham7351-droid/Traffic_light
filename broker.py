@@ -121,15 +121,15 @@ def place_stop_limit_order(side, stop_price, limit_price, quantity):
     # side ko lowercase mein convert karo (Delta API expects 'buy' or 'sell')
     side = side.lower()
     
+    # ✅ FIX: Direct string "stop_limit" use karo (Enum nahi hai)
     order = delta_client.place_order(
         product_id=config.PRODUCT_ID,
         size=quantity,
         side=side,
-        order_type=OrderType.STOP_LIMIT,
+        order_type="stop_limit",
         stop_price=stop_price,
         limit_price=limit_price,
-        reduce_only=False,   # Naya position open kar rahe hain
-        time_in_force="GTC"  # Good Till Cancel
+        reduce_only=False   # Naya position open kar rahe hain
     )
     print(f"[Order] Stop-Limit {side.upper()} placed | Trigger: {stop_price} | Limit: {limit_price}")
     return order
@@ -156,14 +156,14 @@ def place_stop_market_order(side, stop_price, quantity):
     # side ko lowercase mein convert karo
     side = side.lower()
     
+    # ✅ FIX: Direct string "stop_market" use karo (Enum nahi hai)
     order = delta_client.place_order(
         product_id=config.PRODUCT_ID,
         size=quantity,
         side=side,
-        order_type=OrderType.STOP_MARKET,
+        order_type="stop_market",
         stop_price=stop_price,
-        reduce_only=True,   # Sirf existing position close karega (safe guard)
-        time_in_force="GTC"
+        reduce_only=True   # Sirf existing position close karega (safe guard)
     )
     print(f"[Order] Stop-Market {side.upper()} placed | Trigger: {stop_price}")
     return order
