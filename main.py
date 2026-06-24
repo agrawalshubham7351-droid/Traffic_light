@@ -1,5 +1,5 @@
 # =========================
-# MAIN.PY
+# MAIN.PY (FULLY UPDATED WITH STATE SYNC)
 # =========================
 
 import time
@@ -22,7 +22,7 @@ sys.stdout.reconfigure(line_buffering=True)
 LOOP_INTERVAL = 30          # seconds
 PRODUCT_ID    = 84          # BTC Futures (Testnet)
 STATE_FILE    = "trade_state.json"
-SLIPPAGE_BUFFER = 0.002     # 0.2% buffer for stop-limit entries (Increased from 0.05%)
+SLIPPAGE_BUFFER = 0.002     # 0.2% buffer for stop-limit entries
 
 # Inject product ID into config
 config.PRODUCT_ID = PRODUCT_ID
@@ -75,17 +75,11 @@ def _delete_state():
 # =========================
 
 def _get_real_entry_price():
-    """
-    Exchange se position fetch karke real entry price return karta hai.
-    Returns:
-        float: Real entry price (positive for both LONG and SHORT)
-    """
     try:
         position = broker.get_position()
         size = position["size"]
         entry_price = float(position["entry_price"])
         
-        # SHORT position mein entry_price negative aata hai, isliye abs use karo
         if size < 0:
             entry_price = abs(entry_price)
             
@@ -146,6 +140,29 @@ def run():
             current_price = broker.get_current_price()
             print(f"\n[Price] {current_price}")
 
+            # ----------------------------
+            # STEP 1.5 — SELF-HEALING: Check if position actually exists on exchange
+            # ----------------------------
+            try:
+                actual_position = broker.get_position()
+                actual_size = actual_position["size"]
+                
+                # Agar exchange pe position nahi hai, par bot soch raha hai ki trade open hai
+                if actual_size == 0 and config.order_in_progress:
+                    print("[SYNC] Exchange shows NO position, but bot thought trade was open. Resetting state...")
+                    _reset_trade(pnl=0)  # Force reset
+                    
+                # Agar exchange pe position hai, par bot ko nahi pata (kisi aur ne trade li)
+                elif actual_size != 0 and not config.order_in_progress:
+                    print("[SYNC] Exchange shows OPEN position, but bot has no state. Attempting to recover...")
+                    # Try to load state, agar nahi hai toh manual monitoring start karo
+                    if not _load_state():
+                        print("[SYNC] No state file. Setting manual monitoring mode.")
+                        config.order_in_progress = True
+                        
+            except Exception as e:
+                print(f"[SYNC ERROR] {e}")
+
 
             # ----------------------------
             # STEP 2 — Manage open trade
@@ -183,9 +200,14 @@ def run():
 
                         elif current_price <= config.stop_loss:
                             print("[EXIT] Stop Loss hit — Placing Stop-Market order")
-                            side = "SELL"  # BUY trade close karne ke liye SELL order
-                            broker.place_stop_market_order(side, config.stop_loss, config.quantity)
-                            _reset_trade(pnl=-abs(config.entry_price - config.stop_loss) * config.quantity)
+                            side = "SELL"
+                            qty_to_close = abs(config.quantity) if config.quantity else 0
+                            if qty_to_close > 0:
+                                broker.place_stop_market_order(side, config.stop_loss, qty_to_close)
+                                _reset_trade(pnl=-abs(config.entry_price - config.stop_loss) * config.quantity)
+                            else:
+                                print(f"[EXIT] Cannot close - invalid quantity: {config.quantity}")
+                                _reset_trade(pnl=0)  # Force reset if quantity is bad
 
 
                     # --- EXIT: SHORT trade ---
@@ -198,9 +220,14 @@ def run():
 
                         elif current_price >= config.stop_loss:
                             print("[EXIT] Stop Loss hit — Placing Stop-Market order")
-                            side = "BUY"  # SELL trade close karne ke liye BUY order
-                            broker.place_stop_market_order(side, config.stop_loss, config.quantity)
-                            _reset_trade(pnl=-abs(config.stop_loss - config.entry_price) * config.quantity)
+                            side = "BUY"
+                            qty_to_close = abs(config.quantity) if config.quantity else 0
+                            if qty_to_close > 0:
+                                broker.place_stop_market_order(side, config.stop_loss, qty_to_close)
+                                _reset_trade(pnl=-abs(config.stop_loss - config.entry_price) * config.quantity)
+                            else:
+                                print(f"[EXIT] Cannot close - invalid quantity: {config.quantity}")
+                                _reset_trade(pnl=0)  # Force reset if quantity is bad
 
 
             # ----------------------------
@@ -218,7 +245,6 @@ def run():
                 # --- ENTRY: LONG ---
                 if signal == "BUY":
 
-                    # Entry ke liye current price se calculate karo (temporary)
                     temp_entry = current_price
                     sl = range_low
                     target = temp_entry + (config.REWARD_RATIO * abs(temp_entry - sl))
@@ -232,18 +258,15 @@ def run():
                         print(f"[BUY] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
                         broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_int)
                         
-                        # ✅ CRITICAL FIX: 2 second ruko, phir real entry price fetch karo
-                        print("[BUY] Waiting 2 seconds for order to fill...")
-                        time.sleep(2)
+                        print("[BUY] Waiting 3 seconds for order to fill...")
+                        time.sleep(3)
                         
                         real_entry = _get_real_entry_price()
                         if real_entry is not None:
-                            # Real entry ke hisaab se SL/Target recalculate karo
                             real_sl = sl
                             real_target = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
                             print(f"[BUY] Real Entry: {real_entry} | Recalculated Target: {real_target}")
                             
-                            # Naya qty real entry ke hisaab se recalculate karo
                             real_qty = risk.calculate_quantity(real_entry, real_sl)
                             real_qty_int = max(1, int(real_qty))
                             
@@ -271,9 +294,8 @@ def run():
                         print(f"[SELL] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
                         broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_int)
                         
-                        # ✅ CRITICAL FIX: 2 second ruko, phir real entry price fetch karo
-                        print("[SELL] Waiting 2 seconds for order to fill...")
-                        time.sleep(2)
+                        print("[SELL] Waiting 3 seconds for order to fill...")
+                        time.sleep(3)
                         
                         real_entry = _get_real_entry_price()
                         if real_entry is not None:
@@ -352,7 +374,6 @@ def home():
 def start_bot():
     run()
 
-# Bot thread global level par start karo (Gunicorn ke liye)
 print("[Startup] Starting bot thread...")
 bot_thread = threading.Thread(target=start_bot, daemon=True)
 bot_thread.start()
