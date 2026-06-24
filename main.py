@@ -1,5 +1,5 @@
 # =========================
-# MAIN.PY (FULLY UPDATED WITH STATE SYNC)
+# MAIN.PY (FULLY FIXED)
 # =========================
 
 import time
@@ -71,15 +71,34 @@ def _delete_state():
 
 
 # =========================
-# HELPER: GET REAL ENTRY PRICE FROM EXCHANGE
+# HELPER: GET REAL ENTRY PRICE FROM EXCHANGE (FIXED)
 # =========================
 
 def _get_real_entry_price():
+    """
+    Exchange se position fetch karke real entry price return karta hai.
+    Returns:
+        float: Real entry price, ya None agar position nahi hai
+    """
     try:
         position = broker.get_position()
-        size = position["size"]
-        entry_price = float(position["entry_price"])
+        size = position.get("size", 0)
         
+        # ✅ FIX: Agar position hi nahi hai toh None return karo
+        if size == 0:
+            print("[Entry] No position found on exchange.")
+            return None
+            
+        entry_price = position.get("entry_price")
+        
+        # ✅ FIX: Agar entry_price None hai toh None return karo
+        if entry_price is None:
+            print("[Entry] Entry price is None (order might be pending).")
+            return None
+            
+        entry_price = float(entry_price)
+        
+        # SHORT position mein entry_price negative aata hai, isliye abs use karo
         if size < 0:
             entry_price = abs(entry_price)
             
@@ -147,15 +166,12 @@ def run():
                 actual_position = broker.get_position()
                 actual_size = actual_position["size"]
                 
-                # Agar exchange pe position nahi hai, par bot soch raha hai ki trade open hai
                 if actual_size == 0 and config.order_in_progress:
                     print("[SYNC] Exchange shows NO position, but bot thought trade was open. Resetting state...")
-                    _reset_trade(pnl=0)  # Force reset
+                    _reset_trade(pnl=0)
                     
-                # Agar exchange pe position hai, par bot ko nahi pata (kisi aur ne trade li)
                 elif actual_size != 0 and not config.order_in_progress:
                     print("[SYNC] Exchange shows OPEN position, but bot has no state. Attempting to recover...")
-                    # Try to load state, agar nahi hai toh manual monitoring start karo
                     if not _load_state():
                         print("[SYNC] No state file. Setting manual monitoring mode.")
                         config.order_in_progress = True
@@ -207,7 +223,7 @@ def run():
                                 _reset_trade(pnl=-abs(config.entry_price - config.stop_loss) * config.quantity)
                             else:
                                 print(f"[EXIT] Cannot close - invalid quantity: {config.quantity}")
-                                _reset_trade(pnl=0)  # Force reset if quantity is bad
+                                _reset_trade(pnl=0)
 
 
                     # --- EXIT: SHORT trade ---
@@ -227,7 +243,7 @@ def run():
                                 _reset_trade(pnl=-abs(config.stop_loss - config.entry_price) * config.quantity)
                             else:
                                 print(f"[EXIT] Cannot close - invalid quantity: {config.quantity}")
-                                _reset_trade(pnl=0)  # Force reset if quantity is bad
+                                _reset_trade(pnl=0)
 
 
             # ----------------------------
@@ -251,29 +267,56 @@ def run():
                     qty = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
-                        trigger_price = range_high
-                        limit_price = range_high * (1 + SLIPPAGE_BUFFER)
                         qty_int = max(1, int(qty))
                         
-                        print(f"[BUY] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
-                        broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_int)
-                        
-                        print("[BUY] Waiting 3 seconds for order to fill...")
-                        time.sleep(3)
-                        
-                        real_entry = _get_real_entry_price()
-                        if real_entry is not None:
-                            real_sl = sl
-                            real_target = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
-                            print(f"[BUY] Real Entry: {real_entry} | Recalculated Target: {real_target}")
+                        # ✅ FIX: Agar trigger already breach ho chuka hai toh Market Order lagao
+                        if range_high <= current_price:
+                            print(f"[BUY] Trigger {range_high} already breached (current: {current_price}). Placing MARKET order.")
+                            broker.place_buy_order(qty_int)
                             
-                            real_qty = risk.calculate_quantity(real_entry, real_sl)
-                            real_qty_int = max(1, int(real_qty))
-                            
-                            _set_trade("BUY", real_entry, real_sl, real_target, real_qty_int)
+                            # Market order ke liye thoda wait karo
+                            time.sleep(2)
+                            real_entry = _get_real_entry_price()
+                            if real_entry is not None:
+                                real_sl = sl
+                                real_target = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
+                                print(f"[BUY] Real Entry: {real_entry} | Recalculated Target: {real_target}")
+                                real_qty = risk.calculate_quantity(real_entry, real_sl)
+                                real_qty_int = max(1, int(real_qty))
+                                _set_trade("BUY", real_entry, real_sl, real_target, real_qty_int)
+                            else:
+                                print("[BUY] Could not fetch real entry. Using temporary entry.")
+                                _set_trade("BUY", temp_entry, sl, target, qty)
+                        
                         else:
-                            print("[BUY] Could not fetch real entry. Using temporary entry.")
-                            _set_trade("BUY", temp_entry, sl, target, qty)
+                            # Normal Stop-Limit
+                            trigger_price = range_high
+                            limit_price = range_high * (1 + SLIPPAGE_BUFFER)
+                            print(f"[BUY] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
+                            broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_int)
+                            
+                            print("[BUY] Waiting 5 seconds for order to fill...")
+                            time.sleep(5)
+                            
+                            # ✅ FIX: Multiple attempts to fetch real entry
+                            real_entry = None
+                            for attempt in range(3):
+                                real_entry = _get_real_entry_price()
+                                if real_entry is not None:
+                                    break
+                                print(f"[BUY] Attempt {attempt+1}/3 failed. Waiting 2 more seconds...")
+                                time.sleep(2)
+                            
+                            if real_entry is not None:
+                                real_sl = sl
+                                real_target = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
+                                print(f"[BUY] Real Entry: {real_entry} | Recalculated Target: {real_target}")
+                                real_qty = risk.calculate_quantity(real_entry, real_sl)
+                                real_qty_int = max(1, int(real_qty))
+                                _set_trade("BUY", real_entry, real_sl, real_target, real_qty_int)
+                            else:
+                                print("[BUY] Could not fetch real entry. Using temporary entry.")
+                                _set_trade("BUY", temp_entry, sl, target, qty)
                     else:
                         print("[BUY] Qty = 0, skipping order")
 
@@ -287,29 +330,54 @@ def run():
                     qty = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
-                        trigger_price = range_low
-                        limit_price = range_low * (1 - SLIPPAGE_BUFFER)
                         qty_int = max(1, int(qty))
                         
-                        print(f"[SELL] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
-                        broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_int)
-                        
-                        print("[SELL] Waiting 3 seconds for order to fill...")
-                        time.sleep(3)
-                        
-                        real_entry = _get_real_entry_price()
-                        if real_entry is not None:
-                            real_sl = sl
-                            real_target = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
-                            print(f"[SELL] Real Entry: {real_entry} | Recalculated Target: {real_target}")
+                        # ✅ FIX: Agar trigger already breach ho chuka hai toh Market Order lagao
+                        if range_low >= current_price:
+                            print(f"[SELL] Trigger {range_low} already breached (current: {current_price}). Placing MARKET order.")
+                            broker.place_sell_order(qty_int)
                             
-                            real_qty = risk.calculate_quantity(real_entry, real_sl)
-                            real_qty_int = max(1, int(real_qty))
-                            
-                            _set_trade("SELL", real_entry, real_sl, real_target, real_qty_int)
+                            time.sleep(2)
+                            real_entry = _get_real_entry_price()
+                            if real_entry is not None:
+                                real_sl = sl
+                                real_target = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
+                                print(f"[SELL] Real Entry: {real_entry} | Recalculated Target: {real_target}")
+                                real_qty = risk.calculate_quantity(real_entry, real_sl)
+                                real_qty_int = max(1, int(real_qty))
+                                _set_trade("SELL", real_entry, real_sl, real_target, real_qty_int)
+                            else:
+                                print("[SELL] Could not fetch real entry. Using temporary entry.")
+                                _set_trade("SELL", temp_entry, sl, target, qty)
+                        
                         else:
-                            print("[SELL] Could not fetch real entry. Using temporary entry.")
-                            _set_trade("SELL", temp_entry, sl, target, qty)
+                            # Normal Stop-Limit
+                            trigger_price = range_low
+                            limit_price = range_low * (1 - SLIPPAGE_BUFFER)
+                            print(f"[SELL] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
+                            broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_int)
+                            
+                            print("[SELL] Waiting 5 seconds for order to fill...")
+                            time.sleep(5)
+                            
+                            real_entry = None
+                            for attempt in range(3):
+                                real_entry = _get_real_entry_price()
+                                if real_entry is not None:
+                                    break
+                                print(f"[SELL] Attempt {attempt+1}/3 failed. Waiting 2 more seconds...")
+                                time.sleep(2)
+                            
+                            if real_entry is not None:
+                                real_sl = sl
+                                real_target = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
+                                print(f"[SELL] Real Entry: {real_entry} | Recalculated Target: {real_target}")
+                                real_qty = risk.calculate_quantity(real_entry, real_sl)
+                                real_qty_int = max(1, int(real_qty))
+                                _set_trade("SELL", real_entry, real_sl, real_target, real_qty_int)
+                            else:
+                                print("[SELL] Could not fetch real entry. Using temporary entry.")
+                                _set_trade("SELL", temp_entry, sl, target, qty)
                     else:
                         print("[SELL] Qty = 0, skipping order")
 
