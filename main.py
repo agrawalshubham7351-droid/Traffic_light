@@ -1,5 +1,5 @@
 # =========================
-# MAIN.PY (FULLY FIXED)
+# MAIN.PY (FINAL FIXED)
 # =========================
 
 import time
@@ -71,34 +71,26 @@ def _delete_state():
 
 
 # =========================
-# HELPER: GET REAL ENTRY PRICE FROM EXCHANGE (FIXED)
+# HELPER: GET REAL ENTRY PRICE FROM EXCHANGE
 # =========================
 
 def _get_real_entry_price():
-    """
-    Exchange se position fetch karke real entry price return karta hai.
-    Returns:
-        float: Real entry price, ya None agar position nahi hai
-    """
     try:
         position = broker.get_position()
         size = position.get("size", 0)
         
-        # ✅ FIX: Agar position hi nahi hai toh None return karo
         if size == 0:
             print("[Entry] No position found on exchange.")
             return None
             
         entry_price = position.get("entry_price")
         
-        # ✅ FIX: Agar entry_price None hai toh None return karo
         if entry_price is None:
             print("[Entry] Entry price is None (order might be pending).")
             return None
             
         entry_price = float(entry_price)
         
-        # SHORT position mein entry_price negative aata hai, isliye abs use karo
         if size < 0:
             entry_price = abs(entry_price)
             
@@ -107,6 +99,29 @@ def _get_real_entry_price():
     except Exception as e:
         print(f"[Entry] Could not fetch real entry price: {e}")
         return None
+
+
+# =========================
+# HELPER: CONFIRM POSITION CLOSED
+# =========================
+
+def _wait_for_position_close(max_attempts=6, delay=1):
+    """
+    Exchange pe position close hone tak wait karta hai.
+    Returns: True if closed, False if still open after attempts.
+    """
+    for attempt in range(max_attempts):
+        time.sleep(delay)
+        try:
+            pos = broker.get_position()
+            if pos.get("size", 0) == 0:
+                print("[Close] Position confirmed closed.")
+                return True
+        except Exception as e:
+            print(f"[Close] Error checking position: {e}")
+    
+    print("[Close] WARNING: Position might still be open. Check manually.")
+    return False
 
 
 # =========================
@@ -212,6 +227,8 @@ def run():
                         if current_price >= config.target:
                             print("[EXIT] Target hit — closing LONG")
                             broker.close_position()
+                            # ✅ FIX: Position close hone tak wait karo
+                            _wait_for_position_close()
                             _reset_trade(pnl=+abs(config.target - config.entry_price) * config.quantity)
 
                         elif current_price <= config.stop_loss:
@@ -220,6 +237,7 @@ def run():
                             qty_to_close = abs(config.quantity) if config.quantity else 0
                             if qty_to_close > 0:
                                 broker.place_stop_market_order(side, config.stop_loss, qty_to_close)
+                                _wait_for_position_close()
                                 _reset_trade(pnl=-abs(config.entry_price - config.stop_loss) * config.quantity)
                             else:
                                 print(f"[EXIT] Cannot close - invalid quantity: {config.quantity}")
@@ -232,6 +250,8 @@ def run():
                         if current_price <= config.target:
                             print("[EXIT] Target hit — closing SHORT")
                             broker.close_position()
+                            # ✅ FIX: Position close hone tak wait karo
+                            _wait_for_position_close()
                             _reset_trade(pnl=+abs(config.entry_price - config.target) * config.quantity)
 
                         elif current_price >= config.stop_loss:
@@ -240,6 +260,7 @@ def run():
                             qty_to_close = abs(config.quantity) if config.quantity else 0
                             if qty_to_close > 0:
                                 broker.place_stop_market_order(side, config.stop_loss, qty_to_close)
+                                _wait_for_position_close()
                                 _reset_trade(pnl=-abs(config.stop_loss - config.entry_price) * config.quantity)
                             else:
                                 print(f"[EXIT] Cannot close - invalid quantity: {config.quantity}")
@@ -269,12 +290,10 @@ def run():
                     if qty > 0:
                         qty_int = max(1, int(qty))
                         
-                        # ✅ FIX: Agar trigger already breach ho chuka hai toh Market Order lagao
                         if range_high <= current_price:
                             print(f"[BUY] Trigger {range_high} already breached (current: {current_price}). Placing MARKET order.")
                             broker.place_buy_order(qty_int)
                             
-                            # Market order ke liye thoda wait karo
                             time.sleep(2)
                             real_entry = _get_real_entry_price()
                             if real_entry is not None:
@@ -289,7 +308,6 @@ def run():
                                 _set_trade("BUY", temp_entry, sl, target, qty)
                         
                         else:
-                            # Normal Stop-Limit
                             trigger_price = range_high
                             limit_price = range_high * (1 + SLIPPAGE_BUFFER)
                             print(f"[BUY] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
@@ -298,7 +316,6 @@ def run():
                             print("[BUY] Waiting 5 seconds for order to fill...")
                             time.sleep(5)
                             
-                            # ✅ FIX: Multiple attempts to fetch real entry
                             real_entry = None
                             for attempt in range(3):
                                 real_entry = _get_real_entry_price()
@@ -332,7 +349,6 @@ def run():
                     if qty > 0:
                         qty_int = max(1, int(qty))
                         
-                        # ✅ FIX: Agar trigger already breach ho chuka hai toh Market Order lagao
                         if range_low >= current_price:
                             print(f"[SELL] Trigger {range_low} already breached (current: {current_price}). Placing MARKET order.")
                             broker.place_sell_order(qty_int)
@@ -351,7 +367,6 @@ def run():
                                 _set_trade("SELL", temp_entry, sl, target, qty)
                         
                         else:
-                            # Normal Stop-Limit
                             trigger_price = range_low
                             limit_price = range_low * (1 - SLIPPAGE_BUFFER)
                             print(f"[SELL] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
