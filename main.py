@@ -22,6 +22,7 @@ sys.stdout.reconfigure(line_buffering=True)
 LOOP_INTERVAL = 30          # seconds
 PRODUCT_ID    = 84          # BTC Futures (Testnet)
 STATE_FILE    = "trade_state.json"
+SLIPPAGE_BUFFER = 0.0005    # 0.05% buffer for stop-limit entries
 
 # Inject product ID into config
 config.PRODUCT_ID = PRODUCT_ID
@@ -155,8 +156,9 @@ def run():
                             _reset_trade(pnl=+abs(config.target - config.entry_price) * config.quantity)
 
                         elif current_price <= config.stop_loss:
-                            print("[EXIT] Stop Loss hit — closing LONG")
-                            broker.close_position()
+                            print("[EXIT] Stop Loss hit — Placing Stop-Market order")
+                            side = "SELL"  # BUY trade close karne ke liye SELL order
+                            broker.place_stop_market_order(side, config.stop_loss, config.quantity)
                             _reset_trade(pnl=-abs(config.entry_price - config.stop_loss) * config.quantity)
 
 
@@ -168,9 +170,11 @@ def run():
                             broker.close_position()
                             _reset_trade(pnl=+abs(config.entry_price - config.target) * config.quantity)
 
+                        # ✅ FIX: SELL mein SL upar hota hai, isliye '>=' use karo
                         elif current_price >= config.stop_loss:
-                            print("[EXIT] Stop Loss hit — closing SHORT")
-                            broker.close_position()
+                            print("[EXIT] Stop Loss hit — Placing Stop-Market order")
+                            side = "BUY"  # SELL trade close karne ke liye BUY order
+                            broker.place_stop_market_order(side, config.stop_loss, config.quantity)
                             _reset_trade(pnl=-abs(config.stop_loss - config.entry_price) * config.quantity)
 
 
@@ -195,9 +199,11 @@ def run():
                     qty    = risk.calculate_quantity(entry, sl)
 
                     if qty > 0:
-                        print(f"[BUY] Entry: {entry} | SL: {sl} | Target: {target} | Qty: {qty}")
-                        broker.place_buy_order(max(1, int(qty)))
-
+                        # ✅ NEW: Stop-Limit Order (Slippage control ke liye)
+                        trigger_price = range_high
+                        limit_price = range_high * (1 + SLIPPAGE_BUFFER)  # 0.05% upar
+                        print(f"[BUY] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {max(1, int(qty))}")
+                        broker.place_stop_limit_order("BUY", trigger_price, limit_price, max(1, int(qty)))
                         _set_trade("BUY", entry, sl, target, qty)
                     else:
                         print("[BUY] Qty = 0, skipping order")
@@ -212,8 +218,11 @@ def run():
                     qty    = risk.calculate_quantity(entry, sl)
 
                     if qty > 0:
-                        print(f"[SELL] Entry: {entry} | SL: {sl} | Target: {target} | Qty: {qty}")
-                        broker.place_sell_order(max(1,int(qty)))
+                        # ✅ NEW: Stop-Limit Order (Slippage control ke liye)
+                        trigger_price = range_low
+                        limit_price = range_low * (1 - SLIPPAGE_BUFFER)  # 0.05% neeche
+                        print(f"[SELL] Placing Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {max(1, int(qty))}")
+                        broker.place_stop_limit_order("SELL", trigger_price, limit_price, max(1, int(qty)))
                         _set_trade("SELL", entry, sl, target, qty)
                     else:
                         print("[SELL] Qty = 0, skipping order")
