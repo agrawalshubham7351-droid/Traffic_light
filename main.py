@@ -1,5 +1,5 @@
 # =========================
-# MAIN.PY (FINAL FIXED — ALL ISSUES RESOLVED)
+# MAIN.PY (FINAL WITH STOP-LIMIT FALLBACK)
 # =========================
 
 import time
@@ -22,7 +22,7 @@ sys.stdout.reconfigure(line_buffering=True)
 LOOP_INTERVAL   = 30
 PRODUCT_ID      = 84
 STATE_FILE      = "trade_state.json"
-SLIPPAGE_BUFFER = 0.0001   # 🔥 0.01% → sirf ~6 points slippage
+SLIPPAGE_BUFFER = 0.0001   # 0.01% -> ~6 points slippage
 
 config.PRODUCT_ID = PRODUCT_ID
 
@@ -47,17 +47,14 @@ def _save_state():
 def _load_state():
     if not os.path.exists(STATE_FILE):
         return False
-
     with open(STATE_FILE, "r") as f:
         state = json.load(f)
-
     config.order_in_progress = True
     config.order_type        = state["order_type"]
     config.entry_price       = state["entry_price"]
     config.stop_loss         = state["stop_loss"]
     config.target            = state["target"]
     config.quantity          = state["quantity"]
-
     print(f"[State] Restored from {STATE_FILE}")
     print(f"[State] {config.order_type} | Entry: {config.entry_price} | SL: {config.stop_loss} | Target: {config.target} | Qty: {config.quantity}")
     return True
@@ -70,29 +67,23 @@ def _delete_state():
 
 
 # =========================
-# HELPER: GET REAL ENTRY PRICE FROM EXCHANGE
+# HELPER: GET REAL ENTRY PRICE
 # =========================
 
 def _get_real_entry_price():
     try:
         position = broker.get_position()
         size = position.get("size", 0)
-
         if size == 0:
             print("[Entry] No position found on exchange.")
             return None
-
         entry_price = position.get("entry_price")
-
         if entry_price is None:
             print("[Entry] Entry price is None (order might be pending).")
             return None
-
         entry_price = float(entry_price)
-
         if size < 0:
             entry_price = abs(entry_price)
-
         print(f"[Entry] Real entry price from exchange: {entry_price}")
         return entry_price
     except Exception as e:
@@ -114,7 +105,6 @@ def _wait_for_position_close(max_attempts=6, delay=1):
                 return True
         except Exception as e:
             print(f"[Close] Error checking position: {e}")
-
     print("[Close] WARNING: Position might still be open. Check manually.")
     return False
 
@@ -132,7 +122,6 @@ def run():
     print(f"Reward     : {config.REWARD_RATIO}x")
     print("=" * 40)
 
-    # Pair tracking
     pair_entry_taken = False
     last_pair_time   = None
 
@@ -141,7 +130,6 @@ def run():
     try:
         position = broker.get_position()
         size = position["size"]
-
         if size != 0:
             restored = _load_state()
             if not restored:
@@ -150,100 +138,64 @@ def run():
         else:
             _delete_state()
             print("[Startup] No open position. Starting fresh.")
-
-    except ConnectionError as e:
-        print(f"[NETWORK ERROR] Internet/API connection issue: {e}")
-    except ValueError as e:
-        print(f"[DATA ERROR] Unexpected data from API: {e}")
     except Exception as e:
-        print(f"[UNKNOWN ERROR] {type(e).__name__}: {e}")
-
+        print(f"[Startup ERROR] {e}")
 
     while True:
-
         try:
-
-            # ----------------------------
-            # STEP 1 — Fetch current price
-            # ----------------------------
-
             current_price = broker.get_current_price()
             print(f"\n[Price] {current_price}")
 
-            # ----------------------------
-            # STEP 1.5 — SELF-HEALING
-            # ----------------------------
+            # --- SYNC: Check actual position ---
             try:
                 actual_position = broker.get_position()
                 actual_size = actual_position["size"]
-
                 if actual_size == 0 and config.order_in_progress:
                     print("[SYNC] Exchange shows NO position, but bot thought trade was open. Resetting...")
                     _reset_trade(pnl=0)
                     pair_entry_taken = False
-
                 elif actual_size != 0 and not config.order_in_progress:
                     print("[SYNC] Exchange shows OPEN position, but bot has no state. Recovering...")
                     if not _load_state():
                         print("[SYNC] No state file. Setting manual monitoring mode.")
                         config.order_in_progress = True
-
             except Exception as e:
                 print(f"[SYNC ERROR] {e}")
 
-
-            # ----------------------------
-            # STEP 2 — Manage open trade
-            # ----------------------------
-
+            # --- Manage open trade ---
             if config.order_in_progress:
-
                 if config.stop_loss is None or config.target is None:
                     print("[Trade] Open position found but no SL/Target. Waiting for manual close...")
-
                 else:
-
                     print(f"[Trade] {config.order_type} open | Entry: {config.entry_price} | SL: {config.stop_loss} | Target: {config.target}")
-
-                    # --- Break-Even Check ---
-                    new_sl = risk.move_to_break_even(
-                        config.entry_price,
-                        current_price,
-                        config.stop_loss
-                    )
-
+                    new_sl = risk.move_to_break_even(config.entry_price, current_price, config.stop_loss)
                     if new_sl != config.stop_loss:
                         print(f"[Break-Even] SL moved from {config.stop_loss} → {new_sl}")
                         config.stop_loss = new_sl
                         _save_state()
 
-                    # --- EXIT: LONG ---
+                    # EXIT LONG
                     if config.order_type == "BUY":
-
                         if current_price >= config.target:
                             print("[EXIT] Target hit — closing LONG")
                             broker.close_position()
                             _wait_for_position_close()
                             _reset_trade(pnl=+abs(config.target - config.entry_price) * config.quantity)
                             pair_entry_taken = False
-
                         elif current_price <= config.stop_loss:
                             print("[EXIT] Stop Loss hit — closing LONG")
                             broker.close_position()
                             _wait_for_position_close()
                             _reset_trade(pnl=-abs(config.entry_price - config.stop_loss) * config.quantity)
                             pair_entry_taken = False
-
-                    # --- EXIT: SHORT ---
+                    # EXIT SHORT
                     elif config.order_type == "SELL":
-
                         if current_price <= config.target:
                             print("[EXIT] Target hit — closing SHORT")
                             broker.close_position()
                             _wait_for_position_close()
                             _reset_trade(pnl=+abs(config.entry_price - config.target) * config.quantity)
                             pair_entry_taken = False
-
                         elif current_price >= config.stop_loss:
                             print("[EXIT] Stop Loss hit — closing SHORT")
                             broker.close_position()
@@ -251,21 +203,14 @@ def run():
                             _reset_trade(pnl=-abs(config.stop_loss - config.entry_price) * config.quantity)
                             pair_entry_taken = False
 
-
-            # ----------------------------
-            # STEP 3 — Look for new signal
-            # ----------------------------
-
+            # --- Look for new signal ---
             else:
-
                 df = strategy.get_candles()
-
                 signal, range_high, range_low, pair_time = strategy.get_signal(df, current_price)
 
-                # ✅ Sirf valid pair_time pe reset — None pe nahi
                 if pair_time is not None and pair_time != last_pair_time:
                     pair_entry_taken = False
-                    last_pair_time   = pair_time
+                    last_pair_time = pair_time
                     print(f"[Pair] Naya pair detected at time {pair_time}")
 
                 if pair_entry_taken:
@@ -276,34 +221,39 @@ def run():
 
                 # --- ENTRY: LONG ---
                 if signal == "BUY":
-
                     temp_entry = current_price
-                    sl         = range_low
-                    target     = temp_entry + (config.REWARD_RATIO * abs(temp_entry - sl))
-                    qty        = risk.calculate_quantity(temp_entry, sl)
+                    sl = range_low
+                    target = temp_entry + (config.REWARD_RATIO * abs(temp_entry - sl))
+                    qty = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
-                        # 🔥 FIX 1: Quantity — exact BTC, no int() conversion
                         qty_btc = max(0.001, round(qty, 4))
-
-                        # 🔥 FIX 2: Market Order fallback HATA DIYA — hamesha Stop-Limit
                         trigger_price = range_high
-                        limit_price   = range_high * (1 + SLIPPAGE_BUFFER)
-                        print(f"[BUY] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
-                        broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_btc)
+                        limit_price = range_high * (1 + SLIPPAGE_BUFFER)
 
-                        time.sleep(5)
+                        # Try Stop-Limit, fallback to Market on immediate execution error
+                        try:
+                            print(f"[BUY] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
+                            broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_btc)
+                        except Exception as e:
+                            if "immediate_execution_stop_order" in str(e):
+                                print("[BUY] Stop-Limit rejected (immediate execution), placing MARKET order.")
+                                broker.place_buy_order(qty_btc)
+                            else:
+                                raise e
+
+                        # Fetch real entry price and set trade
+                        time.sleep(3)
                         real_entry = None
                         for attempt in range(3):
                             real_entry = _get_real_entry_price()
                             if real_entry is not None:
                                 break
                             time.sleep(2)
-
                         if real_entry is not None:
-                            real_sl      = sl
-                            real_target  = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
-                            real_qty     = risk.calculate_quantity(real_entry, real_sl)
+                            real_sl = sl
+                            real_target = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
+                            real_qty = risk.calculate_quantity(real_entry, real_sl)
                             real_qty_btc = max(0.001, round(real_qty, 4))
                             _set_trade("BUY", real_entry, real_sl, real_target, real_qty_btc)
                         else:
@@ -311,41 +261,42 @@ def run():
                             _set_trade("BUY", temp_entry, sl, target, qty_btc)
 
                         pair_entry_taken = True
-
                     else:
                         print("[BUY] Qty = 0, skipping order")
 
-
                 # --- ENTRY: SHORT ---
                 elif signal == "SELL":
-
                     temp_entry = current_price
-                    sl         = range_high
-                    target     = temp_entry - (config.REWARD_RATIO * abs(sl - temp_entry))
-                    qty        = risk.calculate_quantity(temp_entry, sl)
+                    sl = range_high
+                    target = temp_entry - (config.REWARD_RATIO * abs(sl - temp_entry))
+                    qty = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
-                        # 🔥 FIX 1: Quantity — exact BTC, no int() conversion
                         qty_btc = max(0.001, round(qty, 4))
-
-                        # 🔥 FIX 2: Market Order fallback HATA DIYA — hamesha Stop-Limit
                         trigger_price = range_low
-                        limit_price   = range_low * (1 - SLIPPAGE_BUFFER)
-                        print(f"[SELL] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
-                        broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_btc)
+                        limit_price = range_low * (1 - SLIPPAGE_BUFFER)
 
-                        time.sleep(5)
+                        try:
+                            print(f"[SELL] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
+                            broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_btc)
+                        except Exception as e:
+                            if "immediate_execution_stop_order" in str(e):
+                                print("[SELL] Stop-Limit rejected (immediate execution), placing MARKET order.")
+                                broker.place_sell_order(qty_btc)
+                            else:
+                                raise e
+
+                        time.sleep(3)
                         real_entry = None
                         for attempt in range(3):
                             real_entry = _get_real_entry_price()
                             if real_entry is not None:
                                 break
                             time.sleep(2)
-
                         if real_entry is not None:
-                            real_sl      = sl
-                            real_target  = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
-                            real_qty     = risk.calculate_quantity(real_entry, real_sl)
+                            real_sl = sl
+                            real_target = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
+                            real_qty = risk.calculate_quantity(real_entry, real_sl)
                             real_qty_btc = max(0.001, round(real_qty, 4))
                             _set_trade("SELL", real_entry, real_sl, real_target, real_qty_btc)
                         else:
@@ -353,20 +304,14 @@ def run():
                             _set_trade("SELL", temp_entry, sl, target, qty_btc)
 
                         pair_entry_taken = True
-
                     else:
                         print("[SELL] Qty = 0, skipping order")
 
                 else:
                     print("[Waiting] No valid signal")
 
-
-        except ConnectionError as e:
-            print(f"[NETWORK ERROR] Internet/API connection issue: {e}")
-        except ValueError as e:
-            print(f"[DATA ERROR] Unexpected data from API: {e}")
         except Exception as e:
-            print(f"[UNKNOWN ERROR] {type(e).__name__}: {e}")
+            print(f"[ERROR] {type(e).__name__}: {e}")
 
         print(f"[Daily PnL] {config.daily_pnl:.2f}")
         time.sleep(LOOP_INTERVAL)
@@ -378,22 +323,22 @@ def run():
 
 def _set_trade(order_type, entry, sl, target, qty):
     config.order_in_progress = True
-    config.order_type        = order_type
-    config.entry_price       = entry
-    config.stop_loss         = sl
-    config.target            = target
-    config.quantity          = qty
+    config.order_type = order_type
+    config.entry_price = entry
+    config.stop_loss = sl
+    config.target = target
+    config.quantity = qty
     _save_state()
 
 
 def _reset_trade(pnl=0):
-    config.daily_pnl        += pnl
+    config.daily_pnl += pnl
     config.order_in_progress = False
-    config.order_type        = None
-    config.entry_price       = None
-    config.stop_loss         = None
-    config.target            = None
-    config.quantity          = 0
+    config.order_type = None
+    config.entry_price = None
+    config.stop_loss = None
+    config.target = None
+    config.quantity = 0
     _delete_state()
     print(f"[Trade Closed] PnL this trade: {pnl:.2f}")
 
@@ -417,7 +362,4 @@ bot_thread.start()
 print("[Startup] Bot thread started.")
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000))
-    )
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
