@@ -1,5 +1,5 @@
 # =========================
-# MAIN.PY (FINAL WITH STOP-LIMIT FALLBACK)
+# MAIN.PY (FINAL WITH MARKET ORDER FALLBACK FOR BREACHED PRICE)
 # =========================
 
 import time
@@ -219,7 +219,9 @@ def run():
 
                 print(f"[Signal] {signal} | Range High: {range_high} | Range Low: {range_low}")
 
-                # --- ENTRY: LONG ---
+                # ============================================================
+                # 🔥 ENTRY: LONG (BUY)
+                # ============================================================
                 if signal == "BUY":
                     temp_entry = current_price
                     sl = range_low
@@ -231,19 +233,16 @@ def run():
                         trigger_price = range_high
                         limit_price = range_high * (1 + SLIPPAGE_BUFFER)
 
-                        # Try Stop-Limit, fallback to Market on immediate execution error
-                        try:
+                        # 🔥 FIX: Agar price already Range High ke upar hai toh MARKET order
+                        if current_price >= range_high:
+                            print(f"[BUY] Price {current_price} already above Range High {range_high}. Placing MARKET order.")
+                            broker.place_buy_order(qty_btc)
+                        else:
                             print(f"[BUY] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
                             broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_btc)
-                        except Exception as e:
-                            if "immediate_execution_stop_order" in str(e):
-                                print("[BUY] Stop-Limit rejected (immediate execution), placing MARKET order.")
-                                broker.place_buy_order(qty_btc)
-                            else:
-                                raise e
 
                         # Fetch real entry price and set trade
-                        time.sleep(3)
+                        time.sleep(5)
                         real_entry = None
                         for attempt in range(3):
                             real_entry = _get_real_entry_price()
@@ -264,7 +263,9 @@ def run():
                     else:
                         print("[BUY] Qty = 0, skipping order")
 
-                # --- ENTRY: SHORT ---
+                # ============================================================
+                # 🔥 ENTRY: SHORT (SELL)
+                # ============================================================
                 elif signal == "SELL":
                     temp_entry = current_price
                     sl = range_high
@@ -276,17 +277,16 @@ def run():
                         trigger_price = range_low
                         limit_price = range_low * (1 - SLIPPAGE_BUFFER)
 
-                        try:
+                        # 🔥 FIX: Agar price already Range Low ke neeche hai toh MARKET order
+                        if current_price <= range_low:
+                            print(f"[SELL] Price {current_price} already below Range Low {range_low}. Placing MARKET order.")
+                            broker.place_sell_order(qty_btc)
+                        else:
                             print(f"[SELL] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
                             broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_btc)
-                        except Exception as e:
-                            if "immediate_execution_stop_order" in str(e):
-                                print("[SELL] Stop-Limit rejected (immediate execution), placing MARKET order.")
-                                broker.place_sell_order(qty_btc)
-                            else:
-                                raise e
 
-                        time.sleep(3)
+                        # Fetch real entry price and set trade
+                        time.sleep(5)
                         real_entry = None
                         for attempt in range(3):
                             real_entry = _get_real_entry_price()
