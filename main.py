@@ -276,7 +276,7 @@ def run():
                 signal, range_high, range_low, pair_time = strategy.get_signal(df, current_price)
 
                 # ✅ Naya pair detect karo — flag reset karo
-                if pair_time != last_pair_time:
+                if pair_time is not None and pair_time != last_pair_time:
                     pair_entry_taken = False
                     last_pair_time   = pair_time
                     print(f"[Pair] Naya pair detected at time {pair_time}")
