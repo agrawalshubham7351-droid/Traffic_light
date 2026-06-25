@@ -1,5 +1,5 @@
 # =========================
-# MAIN.PY (FINAL WITH MARKET ORDER FALLBACK FOR BREACHED PRICE)
+# MAIN.PY (FINAL WITH LOT CONVERSION)
 # =========================
 
 import time
@@ -37,7 +37,7 @@ def _save_state():
         "entry_price" : config.entry_price,
         "stop_loss"   : config.stop_loss,
         "target"      : config.target,
-        "quantity"    : config.quantity,
+        "quantity"    : config.quantity,  # BTC amount
     }
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
@@ -229,17 +229,23 @@ def run():
                     qty = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
+                        # 🔥 1. BTC Amount (PnL ke liye)
                         qty_btc = max(0.001, round(qty, 4))
+                        # 🔥 2. Lots (Exchange ko bhejne के लिए) - 1 Lot = 0.001 BTC
+                        qty_lots = int(round(qty_btc / 0.001))
+                        
+                        print(f"[BUY] BTC Qty: {qty_btc} | Lots: {qty_lots}")
+
                         trigger_price = range_high
                         limit_price = range_high * (1 + SLIPPAGE_BUFFER)
 
-                        # 🔥 FIX: Agar price already Range High ke upar hai toh MARKET order
+                        # Agar price already Range High ke upar hai toh MARKET order
                         if current_price >= range_high:
-                            print(f"[BUY] Price {current_price} already above Range High {range_high}. Placing MARKET order.")
-                            broker.place_buy_order(qty_btc)
+                            print(f"[BUY] Price already above Range High. Placing MARKET order.")
+                            broker.place_buy_order(qty_lots)  # Lots bhejo
                         else:
-                            print(f"[BUY] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
-                            broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_btc)
+                            print(f"[BUY] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}")
+                            broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_lots)  # Lots bhejo
 
                         # Fetch real entry price and set trade
                         time.sleep(5)
@@ -252,8 +258,7 @@ def run():
                         if real_entry is not None:
                             real_sl = sl
                             real_target = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
-                            real_qty = risk.calculate_quantity(real_entry, real_sl)
-                            real_qty_btc = max(0.001, round(real_qty, 4))
+                            real_qty_btc = max(0.001, round(risk.calculate_quantity(real_entry, real_sl), 4))
                             _set_trade("BUY", real_entry, real_sl, real_target, real_qty_btc)
                         else:
                             print("[BUY] Could not fetch real entry. Using temporary entry.")
@@ -273,17 +278,23 @@ def run():
                     qty = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
+                        # 🔥 1. BTC Amount (PnL ke liye)
                         qty_btc = max(0.001, round(qty, 4))
+                        # 🔥 2. Lots (Exchange ko bhejne के लिए) - 1 Lot = 0.001 BTC
+                        qty_lots = int(round(qty_btc / 0.001))
+                        
+                        print(f"[SELL] BTC Qty: {qty_btc} | Lots: {qty_lots}")
+
                         trigger_price = range_low
                         limit_price = range_low * (1 - SLIPPAGE_BUFFER)
 
-                        # 🔥 FIX: Agar price already Range Low ke neeche hai toh MARKET order
+                        # Agar price already Range Low ke neeche hai toh MARKET order
                         if current_price <= range_low:
-                            print(f"[SELL] Price {current_price} already below Range Low {range_low}. Placing MARKET order.")
-                            broker.place_sell_order(qty_btc)
+                            print(f"[SELL] Price already below Range Low. Placing MARKET order.")
+                            broker.place_sell_order(qty_lots)  # Lots bhejo
                         else:
-                            print(f"[SELL] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
-                            broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_btc)
+                            print(f"[SELL] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}")
+                            broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_lots)  # Lots bhejo
 
                         # Fetch real entry price and set trade
                         time.sleep(5)
@@ -296,8 +307,7 @@ def run():
                         if real_entry is not None:
                             real_sl = sl
                             real_target = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
-                            real_qty = risk.calculate_quantity(real_entry, real_sl)
-                            real_qty_btc = max(0.001, round(real_qty, 4))
+                            real_qty_btc = max(0.001, round(risk.calculate_quantity(real_entry, real_sl), 4))
                             _set_trade("SELL", real_entry, real_sl, real_target, real_qty_btc)
                         else:
                             print("[SELL] Could not fetch real entry. Using temporary entry.")
@@ -327,7 +337,7 @@ def _set_trade(order_type, entry, sl, target, qty):
     config.entry_price = entry
     config.stop_loss = sl
     config.target = target
-    config.quantity = qty
+    config.quantity = qty  # BTC amount
     _save_state()
 
 
