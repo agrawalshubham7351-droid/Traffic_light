@@ -22,7 +22,7 @@ DELTA_API_SECRET = os.getenv("DELTA_API_SECRET")
 REWARD_RATIO = 2
 
 # Risk Per Trade (%)
-RISK_PER_TRADE = 2
+RISK_PER_TRADE = 20
 
 # Symbol
 SYMBOL = "BTCUSD"
