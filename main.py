@@ -1,5 +1,5 @@
 # =========================
-# MAIN.PY (FINAL FIXED)
+# MAIN.PY (FINAL FIXED — ALL ISSUES RESOLVED)
 # =========================
 
 import time
@@ -22,7 +22,7 @@ sys.stdout.reconfigure(line_buffering=True)
 LOOP_INTERVAL   = 30
 PRODUCT_ID      = 84
 STATE_FILE      = "trade_state.json"
-SLIPPAGE_BUFFER = 0.002
+SLIPPAGE_BUFFER = 0.0001   # 🔥 0.01% → sirf ~6 points slippage
 
 config.PRODUCT_ID = PRODUCT_ID
 
@@ -132,7 +132,7 @@ def run():
     print(f"Reward     : {config.REWARD_RATIO}x")
     print("=" * 40)
 
-    # ✅ Pair tracking variables
+    # Pair tracking
     pair_entry_taken = False
     last_pair_time   = None
 
@@ -180,7 +180,7 @@ def run():
                 if actual_size == 0 and config.order_in_progress:
                     print("[SYNC] Exchange shows NO position, but bot thought trade was open. Resetting...")
                     _reset_trade(pnl=0)
-                    pair_entry_taken = False  # ✅ reset on sync
+                    pair_entry_taken = False
 
                 elif actual_size != 0 and not config.order_in_progress:
                     print("[SYNC] Exchange shows OPEN position, but bot has no state. Recovering...")
@@ -225,20 +225,14 @@ def run():
                             broker.close_position()
                             _wait_for_position_close()
                             _reset_trade(pnl=+abs(config.target - config.entry_price) * config.quantity)
-                            pair_entry_taken = False  # ✅ reset after trade closes
+                            pair_entry_taken = False
 
                         elif current_price <= config.stop_loss:
-                            print("[EXIT] Stop Loss hit — Placing Stop-Market order")
-                            side = "SELL"
-                            qty_to_close = abs(config.quantity) if config.quantity else 0
-                            if qty_to_close > 0:
-                                broker.place_stop_market_order(side, config.stop_loss, qty_to_close)
-                                _wait_for_position_close()
-                                _reset_trade(pnl=-abs(config.entry_price - config.stop_loss) * config.quantity)
-                                pair_entry_taken = False  # ✅ reset after trade closes
-                            else:
-                                print(f"[EXIT] Cannot close - invalid quantity: {config.quantity}")
-                                _reset_trade(pnl=0)
+                            print("[EXIT] Stop Loss hit — closing LONG")
+                            broker.close_position()
+                            _wait_for_position_close()
+                            _reset_trade(pnl=-abs(config.entry_price - config.stop_loss) * config.quantity)
+                            pair_entry_taken = False
 
                     # --- EXIT: SHORT ---
                     elif config.order_type == "SELL":
@@ -248,20 +242,14 @@ def run():
                             broker.close_position()
                             _wait_for_position_close()
                             _reset_trade(pnl=+abs(config.entry_price - config.target) * config.quantity)
-                            pair_entry_taken = False  # ✅ reset after trade closes
+                            pair_entry_taken = False
 
                         elif current_price >= config.stop_loss:
-                            print("[EXIT] Stop Loss hit — Placing Stop-Market order")
-                            side = "BUY"
-                            qty_to_close = abs(config.quantity) if config.quantity else 0
-                            if qty_to_close > 0:
-                                broker.place_stop_market_order(side, config.stop_loss, qty_to_close)
-                                _wait_for_position_close()
-                                _reset_trade(pnl=-abs(config.stop_loss - config.entry_price) * config.quantity)
-                                pair_entry_taken = False  # ✅ reset after trade closes
-                            else:
-                                print(f"[EXIT] Cannot close - invalid quantity: {config.quantity}")
-                                _reset_trade(pnl=0)
+                            print("[EXIT] Stop Loss hit — closing SHORT")
+                            broker.close_position()
+                            _wait_for_position_close()
+                            _reset_trade(pnl=-abs(config.stop_loss - config.entry_price) * config.quantity)
+                            pair_entry_taken = False
 
 
             # ----------------------------
@@ -272,16 +260,14 @@ def run():
 
                 df = strategy.get_candles()
 
-                # ✅ 4 values ab return hoti hain
                 signal, range_high, range_low, pair_time = strategy.get_signal(df, current_price)
 
-                # ✅ Naya pair detect karo — flag reset karo
+                # ✅ Sirf valid pair_time pe reset — None pe nahi
                 if pair_time is not None and pair_time != last_pair_time:
                     pair_entry_taken = False
                     last_pair_time   = pair_time
                     print(f"[Pair] Naya pair detected at time {pair_time}")
 
-                # ✅ Agar is pair pe entry already le li hai toh ignore karo
                 if pair_entry_taken:
                     signal = "NO SIGNAL"
                     print("[Pair] Entry already taken for this pair — ignoring")
@@ -297,50 +283,34 @@ def run():
                     qty        = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
+                        # 🔥 FIX 1: Quantity — exact BTC, no int() conversion
                         qty_btc = max(0.001, round(qty, 4))
-                        
 
-                        if range_high <= current_price:
-                            print(f"[BUY] Trigger already breached. Placing MARKET order.")
-                            broker.place_buy_order(qty_btc)
+                        # 🔥 FIX 2: Market Order fallback HATA DIYA — hamesha Stop-Limit
+                        trigger_price = range_high
+                        limit_price   = range_high * (1 + SLIPPAGE_BUFFER)
+                        print(f"[BUY] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
+                        broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_btc)
 
-                            time.sleep(2)
+                        time.sleep(5)
+                        real_entry = None
+                        for attempt in range(3):
                             real_entry = _get_real_entry_price()
                             if real_entry is not None:
-                                real_sl     = sl
-                                real_target = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
-                                real_qty    = risk.calculate_quantity(real_entry, real_sl)
-                                real_qty_int = max(1, int(real_qty))
-                                _set_trade("BUY", real_entry, real_sl, real_target, real_qty_int)
-                            else:
-                                print("[BUY] Could not fetch real entry. Using temporary entry.")
-                                _set_trade("BUY", temp_entry, sl, target, qty)
+                                break
+                            time.sleep(2)
 
+                        if real_entry is not None:
+                            real_sl      = sl
+                            real_target  = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
+                            real_qty     = risk.calculate_quantity(real_entry, real_sl)
+                            real_qty_btc = max(0.001, round(real_qty, 4))
+                            _set_trade("BUY", real_entry, real_sl, real_target, real_qty_btc)
                         else:
-                            trigger_price = range_high
-                            limit_price   = range_high * (1 + SLIPPAGE_BUFFER)
-                            print(f"[BUY] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
-                            broker.place_stop_limit_order("BUY", trigger_price, limit_price, qty_int)
+                            print("[BUY] Could not fetch real entry. Using temporary entry.")
+                            _set_trade("BUY", temp_entry, sl, target, qty_btc)
 
-                            time.sleep(5)
-                            real_entry = None
-                            for attempt in range(3):
-                                real_entry = _get_real_entry_price()
-                                if real_entry is not None:
-                                    break
-                                time.sleep(2)
-
-                            if real_entry is not None:
-                                real_sl      = sl
-                                real_target  = real_entry + (config.REWARD_RATIO * abs(real_entry - real_sl))
-                                real_qty     = risk.calculate_quantity(real_entry, real_sl)
-                                real_qty_int = max(1, int(real_qty))
-                                _set_trade("BUY", real_entry, real_sl, real_target, real_qty_int)
-                            else:
-                                print("[BUY] Could not fetch real entry. Using temporary entry.")
-                                _set_trade("BUY", temp_entry, sl, target, qty)
-
-                        pair_entry_taken = True  # ✅ is pair pe dobara entry nahi leni
+                        pair_entry_taken = True
 
                     else:
                         print("[BUY] Qty = 0, skipping order")
@@ -355,49 +325,34 @@ def run():
                     qty        = risk.calculate_quantity(temp_entry, sl)
 
                     if qty > 0:
+                        # 🔥 FIX 1: Quantity — exact BTC, no int() conversion
                         qty_btc = max(0.001, round(qty, 4))
 
-                        if range_low >= current_price:
-                            print(f"[SELL] Trigger already breached. Placing MARKET order.")
-                            broker.place_sell_order(qty_btc)
+                        # 🔥 FIX 2: Market Order fallback HATA DIYA — hamesha Stop-Limit
+                        trigger_price = range_low
+                        limit_price   = range_low * (1 - SLIPPAGE_BUFFER)
+                        print(f"[SELL] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_btc}")
+                        broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_btc)
 
-                            time.sleep(2)
+                        time.sleep(5)
+                        real_entry = None
+                        for attempt in range(3):
                             real_entry = _get_real_entry_price()
                             if real_entry is not None:
-                                real_sl      = sl
-                                real_target  = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
-                                real_qty     = risk.calculate_quantity(real_entry, real_sl)
-                                real_qty_int = max(1, int(real_qty))
-                                _set_trade("SELL", real_entry, real_sl, real_target, real_qty_int)
-                            else:
-                                print("[SELL] Could not fetch real entry. Using temporary entry.")
-                                _set_trade("SELL", temp_entry, sl, target, qty)
+                                break
+                            time.sleep(2)
 
+                        if real_entry is not None:
+                            real_sl      = sl
+                            real_target  = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
+                            real_qty     = risk.calculate_quantity(real_entry, real_sl)
+                            real_qty_btc = max(0.001, round(real_qty, 4))
+                            _set_trade("SELL", real_entry, real_sl, real_target, real_qty_btc)
                         else:
-                            trigger_price = range_low
-                            limit_price   = range_low * (1 - SLIPPAGE_BUFFER)
-                            print(f"[SELL] Stop-Limit: Trigger {trigger_price}, Limit {limit_price}, Qty {qty_int}")
-                            broker.place_stop_limit_order("SELL", trigger_price, limit_price, qty_int)
+                            print("[SELL] Could not fetch real entry. Using temporary entry.")
+                            _set_trade("SELL", temp_entry, sl, target, qty_btc)
 
-                            time.sleep(5)
-                            real_entry = None
-                            for attempt in range(3):
-                                real_entry = _get_real_entry_price()
-                                if real_entry is not None:
-                                    break
-                                time.sleep(2)
-
-                            if real_entry is not None:
-                                real_sl      = sl
-                                real_target  = real_entry - (config.REWARD_RATIO * abs(real_sl - real_entry))
-                                real_qty     = risk.calculate_quantity(real_entry, real_sl)
-                                real_qty_int = max(1, int(real_qty))
-                                _set_trade("SELL", real_entry, real_sl, real_target, real_qty_int)
-                            else:
-                                print("[SELL] Could not fetch real entry. Using temporary entry.")
-                                _set_trade("SELL", temp_entry, sl, target, qty)
-
-                        pair_entry_taken = True  # ✅ is pair pe dobara entry nahi leni
+                        pair_entry_taken = True
 
                     else:
                         print("[SELL] Qty = 0, skipping order")
