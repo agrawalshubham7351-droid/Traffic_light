@@ -117,4 +117,4 @@ def get_signal(df, current_price):
 
     # अगर Price Range के अंदर है
     print("[DEBUG] ⏳ Price is inside the range. Waiting for breakout.")
-    return "NO SIGNAL", None, None, None
+    return "NO SIGNAL", range_high, range_low, None
